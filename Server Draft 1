@@ -1,0 +1,184 @@
+/**
+ * This is SERVER CODE.
+ * This solution is the Server side socket. The following code creates an Echo Server that has a specific PORT and IP. A
+ * Client can connect to this server using the DEFAULT_PORT and DEFAULT_IP in this file. Then when connection is
+ * established, any packets the client sends to the server are returned back the same way.
+ *
+ * Upcoming Improvements: Insuring connections are successfully achieved with a client.
+ *
+ * Date: March 1st, 2019
+ * Author: Vishal Ghaie
+ * Version: Draft 1
+ */
+#undef UNICODE
+
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+
+#define _WIN32_WINNT 0x501
+
+#include <stdio.h>
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#include <iphlpapi.h>
+
+#define DEFAULT_BUFLEN 512;      //Buffer length for the max amount of information sent and received
+#define DEFAULT_PORT "21705"     //This is the port used to connect to the outside
+#define DEFAULT_IP "192.168.140.1" //This is the IP used to connect to the outside (IP should match the computer IP)
+
+int main()
+{
+    int defaultWordlen = DEFAULT_BUFLEN;
+
+    printf("Hello and Welcome to the Server!\n");
+    WSADATA wsaData;
+    int iResult;
+
+    //-------------------------------Initializing the WinSock--------------------------------------------//
+    printf("Starting WinSock...\n");
+    iResult = WSAStartup(MAKEWORD(2, 2), &wsaData); //Used to start WS2_32.dll (MAKEWORD is the version)
+    //ERROR Checking the WSA Startup
+    if (iResult != 0)
+    {
+        printf("WSA Failed to start up (Line 19): %d\n", iResult);
+        return 1;
+    }
+
+    //--------------------------------Server Socket Creation-------------------------------------------//
+    printf("Creating Socket...\n");
+    struct addrinfo *result = nullptr;
+    struct addrinfo hints
+            {
+            };
+
+    ZeroMemory(&hints, sizeof(hints));
+    hints.ai_family = AF_INET;       //IPV4 Address
+    hints.ai_socktype = SOCK_STREAM; //Specify the stream socket
+    hints.ai_protocol = IPPROTO_TCP; //Used to specify that the connect is TCP
+    hints.ai_flags = AI_PASSIVE;
+
+    //Resolving the Local Address
+    iResult = getaddrinfo(DEFAULT_IP, DEFAULT_PORT, &hints, &result);
+
+    //ERROR Checking getaddrinfo
+    if (iResult != 0)
+    {
+        printf("getaaddrinfo failed (Line 37): %d\n", iResult);
+        WSACleanup();
+        return 1;
+    }
+
+    SOCKET ListenSocket;
+
+    //Attempting to Connect to the First Address Returned
+    //Creating a SOCKET so a client can connect to the Server
+    ListenSocket = socket(result->ai_family, result->ai_socktype, result->ai_protocol);
+
+    //ERROR Checking the Socket Creation
+    if (ListenSocket == INVALID_SOCKET)
+    {
+        printf("Error making the Socket (Line 56): %d\n", WSAGetLastError());
+        freeaddrinfo(result);
+        WSACleanup();
+        return 1;
+    }
+
+    //---------------------------------Binding to a Socket----------------------------------------------------//
+    printf("Binding Socket...\n");
+    //Creating the TCP Listening Socket
+    iResult = bind(ListenSocket, result->ai_addr, (int)result->ai_addrlen);
+
+    //ERROR Checking the Socket Bind
+    if (iResult == SOCKET_ERROR)
+    {
+        printf("Bind failed (Line 67): %d\n", WSAGetLastError());
+        freeaddrinfo(result);
+        closesocket(ListenSocket);
+        WSACleanup();
+        return 1;
+    }
+    freeaddrinfo(result);
+
+    //--------------------------------Listening on a Socket---------------------------------------------------//
+    printf("Listening on a Socket...\n");
+    //ERROR Checking the Socket Listening
+    if (listen(ListenSocket, SOMAXCONN) == SOCKET_ERROR)
+    {
+        printf("Listen has failed (Line 77): %d\n", WSAGetLastError());
+        closesocket(ListenSocket);
+        WSACleanup();
+        return 1;
+    }
+
+    //--------------------------------Accepting a Connection--------------------------------------------------//
+    printf("Accepting Connections...\n");
+    SOCKET ClientSocket;
+
+    //Accepting the Connection
+    ClientSocket = accept(ListenSocket, nullptr, nullptr);
+
+    //ERROR Checking the Socket Listening Continued
+    if (ClientSocket == INVALID_SOCKET)
+    {
+        printf("Listen Failed (Line 90): %d", WSAGetLastError());
+    }
+
+    //----------------------------Sending and Receiving Data---------------------------------------------------//
+    printf("Sending and Receiving Data...\n");
+    char recvbuf[defaultWordlen];
+    int iSendResult;
+    int recvbuflen = defaultWordlen;
+
+    //Receive Until the Client Shuts Down
+    do
+    {
+        iResult = recv(ClientSocket, recvbuf, recvbuflen, 0);
+        if (iResult > 0)
+        {
+            printf("Bytes received: %d\n", iResult);
+
+            //Echo The Buffer Back to the Sender
+            iSendResult = send(ClientSocket, recvbuf, iResult, 0);
+
+            //ERROR Checking the Send
+            if (iSendResult == SOCKET_ERROR)
+            {
+                printf("Send Failed (Line 117): %d\n", WSAGetLastError());
+                closesocket(ClientSocket);
+                WSACleanup();
+                return 1;
+            }
+            printf("Bytes sent: %d\n", iSendResult);
+        }
+        else if (iResult == 0)
+        {
+            printf("Connection closing...\n");
+        }
+        else
+        {
+            printf("recv failed (Line 127): %d\n", WSAGetLastError());
+            closesocket(ClientSocket);
+            WSACleanup();
+            return 1;
+        }
+    } while (iResult > 0);
+
+    //-------------------------------Shutdown the Socket------------------------------------------------------//
+    printf("SHUTTING DOWN\n\n");
+    iResult = shutdown(ClientSocket, SD_SEND);
+
+    //ERROR Checking Proper Shutdown
+    if (iResult == SOCKET_ERROR)
+    {
+        printf("Shutdown failed (Line 139): %d\n", WSAGetLastError());
+        closesocket(ClientSocket);
+        WSACleanup();
+        return 1;
+    }
+
+    closesocket(ClientSocket);
+    WSACleanup();
+    printf("Thank you for using the server! Have a nice day!\n");
+    return 0;
+}
